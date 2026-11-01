@@ -1,0 +1,7 @@
+pragma language_version 0.27;
+import CompactStandardLibrary;
+
+// Stands in for any other token's issuer.
+export circuit mint(domain: Bytes<32>, amount: Uint<64>, to: UserAddress): Bytes<32> {
+  return mintUnshieldedToken(disclose(domain), disclose(amount), right<ContractAddress, UserAddress>(disclose(to)));
+}

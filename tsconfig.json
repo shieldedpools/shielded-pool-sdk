@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    // Tests run the TypeScript directly under Node's type stripping.
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    // Its index.d.ts re-exports from "./api" with no extension, which NodeNext can't resolve, and
+    // skipLibCheck hides that: every connector type would silently be `any`.
+    "paths": {
+      "@midnightntwrk/dapp-connector-api": ["./node_modules/@midnightntwrk/dapp-connector-api/dist/api.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

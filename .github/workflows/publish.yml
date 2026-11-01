@@ -1,0 +1,36 @@
+name: Publish
+
+# Run by hand to stage the version in package.json, which can only happen once per version.
+# It goes live once a maintainer runs `npm stage approve`, which needs their 2FA.
+# npm trusts this workflow, so no token is stored. First:
+#   1. Publish the first version by hand, because a trusted publisher needs a package to attach to.
+#   2. On npm, add a trusted publisher to the package, with this repository, publish.yml and the
+#      npm environment. It only needs stage publish, so leave the other allowed actions off.
+#   3. Create a GitHub environment named npm, limited to the main branch.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: npm
+    steps:
+      - name: Require main
+        run: '[[ "$GITHUB_REF" == refs/heads/main ]]'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm ci
+      # prepublishOnly builds and tests the SDK first.
+      - run: npm stage publish

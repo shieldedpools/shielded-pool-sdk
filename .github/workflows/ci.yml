@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build and run in Chromium
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: npm run test:browser
+
+  end-to-end:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [test:live, test:live:connector]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: npm ci
+      - name: Start the local network
+        run: |
+          npm run network:up
+          curl -fsS --retry 60 --retry-all-errors --retry-delay 2 -o /dev/null \
+            -H 'content-type: application/json' -d '{"query":"{block{height}}"}' \
+            http://127.0.0.1:8088/api/v4/graphql
+      - name: Run the suite
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: npm run "$SUITE"
+      - name: Show the network's logs
+        if: failure()
+        run: docker compose logs --tail 200

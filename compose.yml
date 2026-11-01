@@ -1,0 +1,58 @@
+# Local test infrastructure for this repository's end-to-end tests. It isn't part of the
+# published SDK. The `dev` preset gifts NIGHT and shielded tokens to the genesis seeds and
+# produces blocks on its own.
+
+name: shielded-pool
+
+services:
+  node:
+    image: midnightntwrk/midnight-node:2.1.0-rc.4@sha256:9040c346c27f569b72dfbbad9420cf38fc7cc6a13b38adf814a925bbe9311678
+    ports:
+      - "127.0.0.1:9944:9944"
+    environment:
+      CFG_PRESET: "dev"
+      SIDECHAIN_BLOCK_BENEFICIARY: "04bcf7ad3be7a5c790460be82a713af570f22e0f801f6659ab8e84a52be6969e"
+    command:
+      - --validator
+      - --alice
+      - --force-authoring
+      - --unsafe-force-node-key-generation
+      - --rpc-external
+      - --rpc-cors=all
+      - --rpc-methods=unsafe
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9944/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  indexer:
+    image: ghcr.io/midnightntwrk/indexer-standalone:4.4.0-rc.6-68702121@sha256:211936e4af678beb63de6590c1c99407decdf82ba0291a83aa9bd7ea471e940f
+    ports:
+      - "127.0.0.1:8088:8088"
+    environment:
+      APP__INFRA__NODE__URL: "ws://node:9944"
+      APP__INFRA__SPO_NODE__URL: "ws://node:9944"
+      APP__INFRA__SPO_NODE__BLOCKFROST_ID: "dummy-not-using-spo"
+      # Only satisfies the config schema; this indexer is local and disposable.
+      APP__INFRA__SECRET: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+      APP__APPLICATION__NETWORK_ID: "undeployed"
+    # It aborts if the node has no block yet, so let it retry until one exists.
+    restart: on-failure
+    depends_on:
+      node:
+        condition: service_healthy
+
+  proof-server:
+    image: midnightntwrk/proof-server:9.0.0-rc.9@sha256:16185d8412fe13292f14d0ef7e609d8ab24899c113c9f9629bdc424355db38ae
+    ports:
+      - "127.0.0.1:6300:6300"
+    environment:
+      MIDNIGHT_PROOF_SERVER_NUM_WORKERS: "4"
+      MIDNIGHT_PP: /proof-params
+    volumes:
+      - proof-params:/proof-params
+
+volumes:
+  # Downloaded on first use, so keep them across network restarts.
+  proof-params:

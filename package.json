@@ -1,0 +1,75 @@
+{
+  "name": "@shieldedpools/sdk",
+  "version": "0.1.0",
+  "description": "A browser SDK for Shielded Pool contract calls through a connected Midnight wallet.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shieldedpools/shielded-pool-sdk.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --disable-warning=ExperimentalWarning --test test/unit/*.test.ts",
+    "test:live": "compact compile +0.35.0 test/e2e/fixtures/minter.compact test/e2e/managed/minter && node --disable-warning=ExperimentalWarning --test --test-force-exit test/e2e/live.test.ts",
+    "test:live:connector": "E2E_CONNECTOR=1 npm run test:live",
+    "network:up": "docker compose up -d --wait",
+    "network:down": "docker compose down",
+    "prepublishOnly": "npm run build && npm test",
+    "release": "npm run build && npm test && mkdir -p release && npm pack --pack-destination release",
+    "test:browser": "npm run build && node --disable-warning=ExperimentalWarning test/browser/run.ts"
+  },
+  "overrides": {
+    "effect": "3.22.4"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-js": "3.0.0-rc.3",
+    "@midnight-ntwrk/midnight-js-contracts": "5.0.0-rc.5",
+    "@midnight-ntwrk/midnight-js-dapp-connector-proof-provider": "5.0.0-rc.5",
+    "@midnight-ntwrk/midnight-js-fetch-zk-config-provider": "5.0.0-rc.5",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "5.0.0-rc.5",
+    "@midnight-ntwrk/midnight-js-types": "5.0.0-rc.5",
+    "@midnightntwrk/dapp-connector-api": "4.1.0-beta.1",
+    "@midnightntwrk/ledger-v9": "1.0.0-rc.5",
+    "@scure/base": "2.4.0",
+    "@shieldedpools/contracts": "0.1.1"
+  },
+  "devDependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.20.0",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "5.0.0-rc.5",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "5.0.0-rc.5",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "5.0.0-rc.5",
+    "@midnightntwrk/wallet-sdk-abstractions": "3.0.0-rc.1",
+    "@midnightntwrk/wallet-sdk-address-format": "4.0.0-rc.0",
+    "@midnightntwrk/wallet-sdk-dust-wallet": "5.0.0-rc.1",
+    "@midnightntwrk/wallet-sdk-facade": "5.0.0-rc.1",
+    "@midnightntwrk/wallet-sdk-hd": "3.1.0-rc.0",
+    "@midnightntwrk/wallet-sdk-shielded": "4.0.0-rc.1",
+    "@midnightntwrk/wallet-sdk-unshielded-wallet": "4.0.0-rc.1",
+    "@types/node": "24.19.2",
+    "@types/ws": "8.18.2",
+    "buffer": "6.0.3",
+    "rxjs": "7.8.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "vite-plugin-wasm": "3.6.0",
+    "ws": "8.22.0"
+  }
+}
