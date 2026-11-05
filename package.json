@@ -28,7 +28,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "node --disable-warning=ExperimentalWarning --test test/unit/*.test.ts",
-    "test:live": "compact compile +0.35.0 test/e2e/fixtures/minter.compact test/e2e/managed/minter && node --disable-warning=ExperimentalWarning --test --test-force-exit test/e2e/live.test.ts",
+    "test:live": "compact compile +0.36.0 test/e2e/fixtures/minter.compact test/e2e/managed/minter && node --disable-warning=ExperimentalWarning --test --test-force-exit test/e2e/live.test.ts",
     "test:live:connector": "E2E_CONNECTOR=1 npm run test:live",
     "network:up": "docker compose up -d --wait",
     "network:down": "docker compose down",
@@ -49,10 +49,10 @@
     "@midnightntwrk/dapp-connector-api": "4.1.0-beta.1",
     "@midnightntwrk/ledger-v9": "1.0.0-rc.5",
     "@scure/base": "2.4.0",
-    "@shieldedpools/contracts": "0.1.1"
+    "@shieldedpools/contracts": "0.2.0"
   },
   "devDependencies": {
-    "@midnight-ntwrk/compact-runtime": "0.20.0",
+    "@midnight-ntwrk/compact-runtime": "0.21.0",
     "@midnight-ntwrk/midnight-js-http-client-proof-provider": "5.0.0-rc.5",
     "@midnight-ntwrk/midnight-js-level-private-state-provider": "5.0.0-rc.5",
     "@midnight-ntwrk/midnight-js-node-zk-config-provider": "5.0.0-rc.5",

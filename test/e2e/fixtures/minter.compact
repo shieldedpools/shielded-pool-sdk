@@ -1,4 +1,4 @@
-pragma language_version 0.27;
+pragma language_version 0.28;
 import CompactStandardLibrary;
 
 // Stands in for any other token's issuer.

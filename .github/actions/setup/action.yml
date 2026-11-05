@@ -20,16 +20,15 @@ runs:
         mkdir -p "$HOME/.local/bin"
         tar -xJf "$archive" --strip-components=1 -C "$HOME/.local/bin"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-        "$HOME/.local/bin/compact" update 0.35.0 --no-set-default
+        "$HOME/.local/bin/compact" update 0.36.0 --no-set-default
     # compact update can't check a checksum, so verify what it installed before running it.
-    # zkir rejects proving parameters whose hash doesn't match, so they need no pin here.
+    # zkir-v3 rejects proving parameters whose hash doesn't match, so they need no pin here.
     - name: Verify the Compact compiler
       shell: bash
       run: |
-        cd "$HOME/.compact/versions/0.35.0/x86_64-unknown-linux-musl"
+        cd "$HOME/.compact/versions/0.36.0/x86_64-unknown-linux-musl"
         sha256sum -c - <<'EOF'
         15646793d3ff7f36cd81aa63419163e29d9893538bb4a6911a21012e8735b537  compactc
-        5f7e2f0e2da785f1f88d231c8d78a4f98278ddf370deac9de805b2c0e267c910  compactc.bin
-        f2a3fd10169da6642ddc56d65c8a6b634637c6222aa0a39152b2ea92c6553a8f  zkir
-        5cf6bce84375a5281c2814fa9084325ba3962769f16611cf8150690033bb1cb7  zkir-v3
+        752be2745abe20a5f039595bc18263d62c03cb03900873b40e8c1d0370bfd86a  compactc.bin
+        cc33dd27953f920d72d7dffe8b04fee0da8c9ae74f483005568137ae7e286e35  zkir-v3
         EOF

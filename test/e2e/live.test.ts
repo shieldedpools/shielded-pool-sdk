@@ -306,8 +306,10 @@ describe("Shielded pool on a local chain", { concurrency: false }, () => {
     assert.deepEqual(authority, { committee: [], threshold: 1, counter: 0n });
     assert.ok(isImmutable(authority));
 
+    // Compact 0.36.0 keys are stored as operation version v4. Removing a version the contract
+    // doesn't have fails even when signed, which would make the control below meaningless.
     const removeUnshield = (address: string, key?: ledger.SigningKey) => {
-      const remove = new ledger.VerifierKeyRemove("unshield", new ledger.ContractOperationVersion("v3"));
+      const remove = new ledger.VerifierKeyRemove("unshield", new ledger.ContractOperationVersion("v4"));
       const unsigned = new ledger.MaintenanceUpdate(address, [remove], 0n);
       const update = key
         ? unsigned.addSignature(0n, ledger.signData(key, unsigned.dataToSign))

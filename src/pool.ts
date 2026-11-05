@@ -33,7 +33,7 @@ export const PRIVATE_STATE_ID = "shielded-pool";
 // SHA-256 of the contract's compiler/contract-manifest.json, which lists every key and ZKIR file
 // by hash. Pinning it here means whoever serves those files can't swap them, even with a matching
 // manifest. A unit test fails if this drifts from the contracts package this SDK is locked to.
-const CONTRACT_MANIFEST_SHA256 = "6b939d17f4ebd6d985d28aa76b252058cb851994916fac09f9abef591477183e";
+const CONTRACT_MANIFEST_SHA256 = "abf9a282ba1258781fbe4beaecc9495a205b453b49f31ec90d055299863f883e";
 
 /**
  * Keys and ZKIR for `connectorProviders`, fetched from `baseUrl`, an absolute URL. It has to serve

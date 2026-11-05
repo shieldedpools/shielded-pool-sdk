@@ -4,6 +4,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, it } from "node:test";
 
+import {
+  createCircuitContext,
+  createConstructorContext,
+  sampleContractAddress,
+} from "@midnight-ntwrk/compact-runtime";
 import { Contract } from "@shieldedpools/contracts";
 
 import { ZK_DIR } from "../support/config.ts";
@@ -17,6 +22,25 @@ describe("tokens", () => {
     assert.equal(wrappedColor(contract, token), wrappedColor(contract, token));
     assert.notEqual(wrappedColor(contract, token), wrappedColor(contract, hex()));
     assert.notEqual(wrappedColor(contract, token), wrappedColor(other, token));
+  });
+
+  // Runs the circuit without a proof or a network, so this checks the colour the contract
+  // mints, which is what unshield compares a coin's colour against.
+  it("names the colour the contract's shield circuit mints", async () => {
+    const contract = new Contract({});
+    const wallet = { bytes: randomBytes(32) };
+    const { currentContractState } = await contract.initialState(createConstructorContext({}, wallet));
+    const address = sampleContractAddress();
+    const token = hex();
+    const context = createCircuitContext({
+      circuitId: "shield",
+      contractAddress: address,
+      coinPublicKeyOrZswapState: wallet,
+      contractState: currentContractState,
+      privateState: {},
+    });
+    const { result } = await contract.circuits.shield(context, Buffer.from(token, "hex"), 5n, randomBytes(32));
+    assert.equal(Buffer.from(result.color).toString("hex"), wrappedColor(address, token));
   });
 });
 
