@@ -19,7 +19,11 @@ const txId = await shield(providers, contractAddress, NIGHT, 1_000_000n);
 
 `connected` is the wallet's connector API, version 4.1. The SDK re-exports its types, such as `ConnectedAPI` and `InitialAPI`, so you can use the version it's built against without installing the connector package yourself. Amounts are `bigint`s in a token's smallest units. `unshield` takes a recipient from `parseUnshieldedAddress`, `locked` reads what a contract holds, `isImmutable` checks what `maintenanceAuthority` returns, and `wrappedColor` names a wrapped token for the wallet's balances and transfers.
 
-`shield` and `unshield` check their arguments before anything reaches the network: a token is 64 hex characters, an amount runs from 1 to 2⁶⁴ − 1 units, and a recipient is 32 bytes and not the zero address. A refusal throws `ShieldedPoolError` with `outcome: "failed"`, which means nothing was sent, so trying again can't spend twice. `parseUnshieldedAddress` refuses the zero address too.
+`shield` and `unshield` check their arguments before anything reaches the network: a token is 64 hex characters, an amount runs from 1 to 2⁶⁴ − 1 units, and a recipient is 32 bytes and not the zero address. `parseUnshieldedAddress` refuses the zero address too.
+
+Both take a last, optional `{ onStep, signal }`. `onStep` hears `proving`, `balancing`, `submitting` and `submitted`, with the transaction's id at `submitted`. Aborting `signal` stops the call before the wallet is asked to balance or send it. Once the transaction has been handed over it can't be called back, so aborting changes nothing. Neither call has a timeout of its own: a wallet can hold a request, and the network can take its time, so set your own and abort.
+
+Every failure is a `ShieldedPoolError`. Its `outcome` is `failed` when the transaction is known not to have happened, so trying again can't spend twice. That covers anything before it was handed over, a wallet refusing to send it, and a transaction the network rejected entirely. It's `unknown` when it was handed over and nothing says what became of it, or when the network applied only part of it (`FailFallible`), whose guaranteed part took effect: check balances before you try again. `cause` holds the wallet's own error where there is one, which midnight-js would otherwise have redacted.
 
 Your build needs:
 

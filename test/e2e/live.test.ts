@@ -188,7 +188,10 @@ describe("Shielded pool on a local chain", { concurrency: false }, () => {
   });
 
   it("keeps each token exactly backed through a random order of calls", async () => {
-    await shield(alice.providers, contract, NIGHT, 100_000_000n);
+    const steps: string[] = [];
+    const onStep = (step: string, id?: string) => steps.push(id === undefined ? step : `${step} ${id}`);
+    const txId = await shield(alice.providers, contract, NIGHT, 100_000_000n, { onStep });
+    assert.deepEqual(steps, ["proving", "balancing", "submitting", `submitted ${txId}`]);
     backing.set(NIGHT, 100_000_000n);
     await assertBacked();
     for (let step = 0; step < 6; step++) {

@@ -10,10 +10,10 @@ export {
   maintenanceAuthority,
   NIGHT,
   shield,
-  ShieldedPoolError,
   unshield,
   wrappedColor,
 } from "./pool.ts";
+export { type CallOptions, type Outcome, ShieldedPoolError, type Step } from "./transaction.ts";
 // The connector API this SDK is built against, so an app that talks to the wallet uses the same
 // version that `connectorProviders` expects.
 export type {

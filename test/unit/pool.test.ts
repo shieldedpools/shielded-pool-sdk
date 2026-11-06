@@ -14,7 +14,8 @@ import { Contract } from "@shieldedpools/contracts";
 import type { Ledger9ContractProviders } from "@midnight-ntwrk/midnight-js-contracts";
 
 import { ZK_DIR } from "../support/config.ts";
-import { isImmutable, shield, ShieldedPoolError, unshield, wrappedColor } from "../../src/pool.ts";
+import { isImmutable, shield, unshield, wrappedColor } from "../../src/pool.ts";
+import { ShieldedPoolError } from "../../src/transaction.ts";
 
 const hex = () => randomBytes(32).toString("hex");
 

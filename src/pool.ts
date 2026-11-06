@@ -16,6 +16,8 @@ import type { ZKConfigProvider } from "@midnight-ntwrk/midnight-js-types";
 import { type Circuits, Contract } from "@shieldedpools/contracts";
 import { hex } from "@scure/base";
 
+import { type CallOptions, ShieldedPoolError, track } from "./transaction.ts";
+
 /** NIGHT's colour. Tokens are identified by colour, as 64 hex characters. */
 export const NIGHT = nativeToken().raw;
 
@@ -58,18 +60,6 @@ interface WrapperCircuits {
 type CircuitArgs<K extends keyof Circuits<unknown>> =
   Parameters<Circuits<unknown>[K]> extends [unknown, ...infer Args] ? Args : never;
 type CallResult = { public: { txId: string } };
-
-/** Why a `shield` or `unshield` didn't go through. */
-export class ShieldedPoolError extends Error {
-  override readonly name = "ShieldedPoolError";
-  /** `failed`: it's known not to have happened, so trying again can't spend twice. */
-  readonly outcome: "failed";
-
-  constructor(message: string, outcome: "failed", options?: ErrorOptions) {
-    super(message, options);
-    this.outcome = outcome;
-  }
-}
 
 // The contract takes amounts as a `Uint<64>`.
 const MAX_AMOUNT = 2n ** 64n - 1n;
@@ -119,21 +109,26 @@ export async function attach(
 
 /**
  * Locks `amount` units of `token` and mints the same amount of its wrapped token to this wallet.
+ * Resolves to the transaction's id once the network has confirmed it.
  *
- * Throws {@link ShieldedPoolError} with `outcome: "failed"` for arguments the contract can't take.
+ * Throws {@link ShieldedPoolError}. Its `outcome` says whether the transaction might have been sent:
+ * arguments the contract can't take, for one, are refused as `failed` before anything is sent.
  */
 export async function shield(
   providers: Ledger9ContractProviders,
   contractAddress: string,
   token: string,
   amount: bigint,
+  options: CallOptions = {},
 ): Promise<string> {
   checkToken(token);
   checkAmount(amount);
-  const contract = await attach(providers, contractAddress);
-  const nonce = crypto.getRandomValues(new Uint8Array(32));
-  const result = await contract.shield(hex.decode(token), amount, nonce);
-  return result.public.txId;
+  return track(providers, options, async (observed) => {
+    const contract = await attach(observed, contractAddress);
+    const nonce = crypto.getRandomValues(new Uint8Array(32));
+    const result = await contract.shield(hex.decode(token), amount, nonce);
+    return result.public.txId;
+  });
 }
 
 /**
@@ -143,8 +138,8 @@ export async function shield(
  * The coin is fresh: the wallet funds it from whatever wrapped coins it holds and
  * keeps the change, so the amount does not have to match an earlier `shield`.
  *
- * Throws {@link ShieldedPoolError} with `outcome: "failed"` for arguments the contract can't take,
- * including the zero address as `recipient`.
+ * Throws {@link ShieldedPoolError}, as `shield` does. The zero address as `recipient` is refused
+ * as `failed` before anything is sent.
  */
 export async function unshield(
   providers: Ledger9ContractProviders,
@@ -152,15 +147,18 @@ export async function unshield(
   token: string,
   amount: bigint,
   recipient: Uint8Array,
+  options: CallOptions = {},
 ): Promise<string> {
   checkToken(token);
   checkAmount(amount);
   checkRecipient(recipient);
-  const contract = await attach(providers, contractAddress);
-  const color = wrappedColor(contractAddress, token);
-  const coin = encodeShieldedCoinInfo(createShieldedCoinInfo(color, amount));
-  const result = await contract.unshield(hex.decode(token), coin, { bytes: recipient });
-  return result.public.txId;
+  return track(providers, options, async (observed) => {
+    const contract = await attach(observed, contractAddress);
+    const color = wrappedColor(contractAddress, token);
+    const coin = encodeShieldedCoinInfo(createShieldedCoinInfo(color, amount));
+    const result = await contract.unshield(hex.decode(token), coin, { bytes: recipient });
+    return result.public.txId;
+  });
 }
 
 export interface Authority {
