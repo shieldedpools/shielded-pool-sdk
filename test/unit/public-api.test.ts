@@ -27,6 +27,7 @@ describe("public API", () => {
     ).split(/\s+/);
     assert.deepEqual(exports.filter(Boolean).toSorted(), [
       "NIGHT",
+      "ShieldedPoolError",
       "connectorProviders",
       "contractKeys",
       "isImmutable",

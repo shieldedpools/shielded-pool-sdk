@@ -41,6 +41,11 @@ describe("addresses", () => {
     assert.throws(() => parseShieldedAddress(address, "undeployed"), /Not a shield-addr address/);
   });
 
+  it("refuses the zero address, which can't receive tokens", () => {
+    const zero = MidnightBech32m.encode("undeployed", new UnshieldedAddress(Buffer.alloc(32))).asString();
+    assert.throws(() => parseUnshieldedAddress(zero, "undeployed"), /zero address/);
+  });
+
   it("refuses the wrong kind of address, and anything corrupted", () => {
     const [coin, encryption] = keys();
     const unshielded = MidnightBech32m.encode("undeployed", new UnshieldedAddress(coin)).asString();

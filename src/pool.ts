@@ -59,6 +59,46 @@ type CircuitArgs<K extends keyof Circuits<unknown>> =
   Parameters<Circuits<unknown>[K]> extends [unknown, ...infer Args] ? Args : never;
 type CallResult = { public: { txId: string } };
 
+/** Why a `shield` or `unshield` didn't go through. */
+export class ShieldedPoolError extends Error {
+  override readonly name = "ShieldedPoolError";
+  /** `failed`: it's known not to have happened, so trying again can't spend twice. */
+  readonly outcome: "failed";
+
+  constructor(message: string, outcome: "failed", options?: ErrorOptions) {
+    super(message, options);
+    this.outcome = outcome;
+  }
+}
+
+// The contract takes amounts as a `Uint<64>`.
+const MAX_AMOUNT = 2n ** 64n - 1n;
+
+const refuse = (message: string): never => {
+  throw new ShieldedPoolError(message, "failed");
+};
+
+// These run before anything reaches the network, so a mistake costs nothing and the reason is clear.
+function checkToken(token: string): void {
+  if (typeof token !== "string" || !/^[0-9a-f]{64}$/i.test(token)) {
+    refuse("A token is its colour, as 64 hex characters");
+  }
+}
+
+function checkAmount(amount: bigint): void {
+  if (typeof amount !== "bigint" || amount < 1n || amount > MAX_AMOUNT) {
+    refuse(`The amount has to be a bigint from 1 to ${MAX_AMOUNT} units`);
+  }
+}
+
+function checkRecipient(recipient: Uint8Array): void {
+  if (!(recipient instanceof Uint8Array) || recipient.length !== 32) {
+    refuse("The recipient has to be 32 bytes, as parseUnshieldedAddress returns");
+  }
+  // The contract refuses it too, but only once it's been asked.
+  if (recipient.every((byte) => byte === 0)) refuse("The zero address can't receive tokens");
+}
+
 /** The colour of `token`'s wrapped token. It must match `tokenType()` in the contract. */
 export function wrappedColor(contractAddress: string, token: string): string {
   return rawTokenType(hex.decode(token), contractAddress);
@@ -77,13 +117,19 @@ export async function attach(
   return found.callTx as unknown as WrapperCircuits;
 }
 
-/** Locks `amount` units of `token` and mints the same amount of its wrapped token to this wallet. */
+/**
+ * Locks `amount` units of `token` and mints the same amount of its wrapped token to this wallet.
+ *
+ * Throws {@link ShieldedPoolError} with `outcome: "failed"` for arguments the contract can't take.
+ */
 export async function shield(
   providers: Ledger9ContractProviders,
   contractAddress: string,
   token: string,
   amount: bigint,
 ): Promise<string> {
+  checkToken(token);
+  checkAmount(amount);
   const contract = await attach(providers, contractAddress);
   const nonce = crypto.getRandomValues(new Uint8Array(32));
   const result = await contract.shield(hex.decode(token), amount, nonce);
@@ -96,6 +142,9 @@ export async function shield(
  *
  * The coin is fresh: the wallet funds it from whatever wrapped coins it holds and
  * keeps the change, so the amount does not have to match an earlier `shield`.
+ *
+ * Throws {@link ShieldedPoolError} with `outcome: "failed"` for arguments the contract can't take,
+ * including the zero address as `recipient`.
  */
 export async function unshield(
   providers: Ledger9ContractProviders,
@@ -104,6 +153,9 @@ export async function unshield(
   amount: bigint,
   recipient: Uint8Array,
 ): Promise<string> {
+  checkToken(token);
+  checkAmount(amount);
+  checkRecipient(recipient);
   const contract = await attach(providers, contractAddress);
   const color = wrappedColor(contractAddress, token);
   const coin = encodeShieldedCoinInfo(createShieldedCoinInfo(color, amount));

@@ -10,6 +10,7 @@ export {
   maintenanceAuthority,
   NIGHT,
   shield,
+  ShieldedPoolError,
   unshield,
   wrappedColor,
 } from "./pool.ts";

@@ -11,8 +11,10 @@ import {
 } from "@midnight-ntwrk/compact-runtime";
 import { Contract } from "@shieldedpools/contracts";
 
+import type { Ledger9ContractProviders } from "@midnight-ntwrk/midnight-js-contracts";
+
 import { ZK_DIR } from "../support/config.ts";
-import { isImmutable, wrappedColor } from "../../src/pool.ts";
+import { isImmutable, shield, ShieldedPoolError, unshield, wrappedColor } from "../../src/pool.ts";
 
 const hex = () => randomBytes(32).toString("hex");
 
@@ -41,6 +43,55 @@ describe("tokens", () => {
     });
     const { result } = await contract.circuits.shield(context, Buffer.from(token, "hex"), 5n, randomBytes(32));
     assert.equal(Buffer.from(result.color).toString("hex"), wrappedColor(address, token));
+  });
+});
+
+describe("arguments", () => {
+  // Any use of these means a call got past its checks, which is what reaching the network takes.
+  const TOUCHED = "touched the providers";
+  const providers = new Proxy({}, {
+    get() {
+      throw new Error(TOUCHED);
+    },
+  }) as Ledger9ContractProviders;
+  const [contract, token, recipient] = [hex(), hex(), randomBytes(32)];
+
+  const refused = async (call: Promise<unknown>, reason: RegExp) => {
+    await assert.rejects(call, (error) => {
+      assert.ok(error instanceof ShieldedPoolError, String(error));
+      assert.equal(error.outcome, "failed");
+      assert.match(error.message, reason);
+      return true;
+    });
+  };
+  const passed = (call: Promise<unknown>) => assert.rejects(call, new RegExp(TOUCHED));
+
+  it("refuses an amount the contract can't take, before reaching the network", async () => {
+    for (const amount of [0n, -1n, 2n ** 64n, 5 as unknown as bigint]) {
+      await refused(shield(providers, contract, token, amount), /amount/);
+      await refused(unshield(providers, contract, token, amount, recipient), /amount/);
+    }
+  });
+
+  it("takes any amount from 1 to the largest Uint<64>", async () => {
+    for (const amount of [1n, 2n ** 64n - 1n]) {
+      await passed(shield(providers, contract, token, amount));
+      await passed(unshield(providers, contract, token, amount, recipient));
+    }
+  });
+
+  it("refuses a token that isn't a colour", async () => {
+    for (const bad of ["", "xyz", "ab".repeat(31), "ab".repeat(33), `0x${"ab".repeat(31)}`]) {
+      await refused(shield(providers, contract, bad, 1n), /token/);
+      await refused(unshield(providers, contract, bad, 1n, recipient), /token/);
+    }
+  });
+
+  it("refuses a recipient that isn't 32 bytes, or is the zero address", async () => {
+    for (const bad of [new Uint8Array(31), new Uint8Array(33), "ab".repeat(32) as unknown as Uint8Array]) {
+      await refused(unshield(providers, contract, token, 1n, bad), /32 bytes/);
+    }
+    await refused(unshield(providers, contract, token, 1n, new Uint8Array(32)), /zero address/);
   });
 });
 

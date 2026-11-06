@@ -27,7 +27,12 @@ export function parseShieldedAddress(text: string, networkId: string): ShieldedK
   };
 }
 
-/** The 32 bytes a contract sees as this address's `UserAddress`. */
+/**
+ * The 32 bytes a contract sees as this address's `UserAddress`. Refuses the zero address, which
+ * can't receive tokens, so a form can say so before anything is sent.
+ */
 export function parseUnshieldedAddress(text: string, networkId: string): Uint8Array {
-  return decode(text, "addr", networkId, 32);
+  const bytes = decode(text, "addr", networkId, 32);
+  if (bytes.every((byte) => byte === 0)) throw new Error("The zero address can't receive tokens");
+  return bytes;
 }
