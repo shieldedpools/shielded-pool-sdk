@@ -336,6 +336,11 @@ describe("Shielded pool on a local chain", { concurrency: false }, () => {
     };
     const controlled = await deployContract(alice.deployer, options as never);
     const { contractAddress } = controlled.deployTxData.public;
+    // Its key can take whatever it holds, so the SDK won't shield into it.
+    await rejected(
+      shield(alice.providers, contractAddress, NIGHT, 1n),
+      /Refusing to shield into this contract, because 1 of its 1 maintainers can change it/,
+    );
     const { status } = await removeUnshield(contractAddress, signingKey);
     assert.equal(status, SucceedEntirely);
   });

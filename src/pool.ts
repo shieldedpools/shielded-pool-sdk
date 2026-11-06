@@ -107,9 +107,20 @@ export async function attach(
   return found.callTx as unknown as WrapperCircuits;
 }
 
+export interface ShieldOptions extends CallOptions {
+  /**
+   * Shield even into a contract that isn't known to be immutable. Whoever can change it can take
+   * everything it holds, so only set this for a contract you control or are testing.
+   */
+  allowChangeable?: boolean;
+}
+
 /**
  * Locks `amount` units of `token` and mints the same amount of its wrapped token to this wallet.
  * Resolves to the transaction's id once the network has confirmed it.
+ *
+ * Refuses a contract that isn't known to be immutable, unless `allowChangeable` is set: anyone who
+ * can change it can take what it holds, and a maintenance authority that can't be read is no answer.
  *
  * Throws {@link ShieldedPoolError}. Its `outcome` says whether the transaction might have been sent:
  * arguments the contract can't take, for one, are refused as `failed` before anything is sent.
@@ -119,11 +130,17 @@ export async function shield(
   contractAddress: string,
   token: string,
   amount: bigint,
-  options: CallOptions = {},
+  options: ShieldOptions = {},
 ): Promise<string> {
   checkToken(token);
   checkAmount(amount);
   return track(providers, options, async (observed) => {
+    if (options.allowChangeable !== true) {
+      const status = await immutability(observed, contractAddress);
+      if (status.state !== "immutable") {
+        throw new ShieldedPoolError(`Refusing to shield into this contract, because ${whyNot(status)}`, "failed");
+      }
+    }
     const contract = await attach(observed, contractAddress);
     const nonce = crypto.getRandomValues(new Uint8Array(32));
     const result = await contract.shield(hex.decode(token), amount, nonce);
@@ -187,6 +204,34 @@ export async function maintenanceAuthority(
  */
 export function isImmutable({ committee, threshold }: Authority): boolean {
   return threshold > committee.length;
+}
+
+export type Immutability =
+  | { state: "immutable" | "changeable"; authority: Authority }
+  | { state: "unreadable"; reason: string };
+
+/**
+ * Whether this contract can be changed, from its maintenance authority. Anything short of a clear
+ * answer is `unreadable`, and `shield` treats that the same as `changeable`.
+ */
+export async function immutability(
+  providers: Ledger9ContractProviders,
+  contractAddress: string,
+): Promise<Immutability> {
+  try {
+    const authority = await maintenanceAuthority(providers, contractAddress);
+    return { state: isImmutable(authority) ? "immutable" : "changeable", authority };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { state: "unreadable", reason: message.split("\n", 1)[0] ?? "" };
+  }
+}
+
+function whyNot(status: Immutability): string {
+  if (status.state === "unreadable") return `its maintenance authority couldn't be read: ${status.reason}`;
+  const { threshold, committee } = status.authority;
+  if (threshold === 0) return "anyone can change it, without signing";
+  return `${threshold} of its ${committee.length} maintainers can change it`;
 }
 
 /** The `token` backing its wrapped token, read from the contract's public balance. */

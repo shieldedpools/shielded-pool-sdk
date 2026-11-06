@@ -30,6 +30,7 @@ describe("public API", () => {
       "ShieldedPoolError",
       "connectorProviders",
       "contractKeys",
+      "immutability",
       "isImmutable",
       "locked",
       "maintenanceAuthority",

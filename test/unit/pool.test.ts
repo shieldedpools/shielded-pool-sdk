@@ -12,9 +12,11 @@ import {
 import { Contract } from "@shieldedpools/contracts";
 
 import type { Ledger9ContractProviders } from "@midnight-ntwrk/midnight-js-contracts";
+import { SerializedContractState } from "@midnight-ntwrk/midnight-js-types";
+import * as ledger from "@midnightntwrk/ledger-v9";
 
 import { ZK_DIR } from "../support/config.ts";
-import { isImmutable, shield, unshield, wrappedColor } from "../../src/pool.ts";
+import { immutability, isImmutable, shield, unshield, wrappedColor } from "../../src/pool.ts";
 import { ShieldedPoolError } from "../../src/transaction.ts";
 
 const hex = () => randomBytes(32).toString("hex");
@@ -93,6 +95,114 @@ describe("arguments", () => {
       await refused(unshield(providers, contract, token, 1n, bad), /32 bytes/);
     }
     await refused(unshield(providers, contract, token, 1n, new Uint8Array(32)), /zero address/);
+  });
+});
+
+describe("immutability", () => {
+  const keys = (count: number) =>
+    Array.from({ length: count }, () => ledger.signatureVerifyingKey(ledger.sampleSigningKey()));
+  // What the indexer returns for a contract with this authority.
+  const readOf = (committee: number, threshold: number) => {
+    const state = new ledger.ContractState();
+    state.maintenanceAuthority = new ledger.ContractMaintenanceAuthority(keys(committee), threshold, 0n);
+    return { protocolVersion: 0, contractState: SerializedContractState.fromBytes("v9", state.serialize()) };
+  };
+  const reading = (read: () => Promise<unknown>) =>
+    ({ publicDataProvider: { queryContractState: read } }) as unknown as Ledger9ContractProviders;
+  const contract = hex();
+
+  it("calls a contract immutable when no committee can meet its threshold", async () => {
+    const status = await immutability(reading(async () => readOf(0, 1)), contract);
+    assert.equal(status.state, "immutable");
+  });
+
+  it("calls a contract changeable when its committee can sign, or when it needs no signature", async () => {
+    for (const [committee, threshold] of [[1, 1], [3, 2], [0, 0]] as const) {
+      const status = await immutability(reading(async () => readOf(committee, threshold)), contract);
+      assert.equal(status.state, "changeable", `${threshold} of ${committee}`);
+    }
+  });
+
+  it("is unreadable, never immutable, without a clear answer", async () => {
+    const answers = [
+      async () => null,
+      async () => ({ protocolVersion: 0, contractState: { era: "v8" } }),
+      async () => {
+        throw new Error("the indexer went away");
+      },
+    ];
+    for (const answer of answers) {
+      assert.equal((await immutability(reading(answer), contract)).state, "unreadable");
+    }
+  });
+});
+
+describe("the immutability gate", () => {
+  const { contract, token, recipient } = { contract: hex(), token: hex(), recipient: randomBytes(32) };
+  // Anything past the gate needs these, so a call that reaches them got through it.
+  const PAST_THE_GATE = "got past the gate";
+  const past = () => {
+    throw new Error(PAST_THE_GATE);
+  };
+  const providersReading = (read: () => Promise<unknown>) => {
+    let reads = 0;
+    const providers = {
+      publicDataProvider: new Proxy({}, {
+        get: (_, name) => (name === "queryContractState" && reads++ === 0 ? read : past()),
+      }),
+      proofProvider: { proveTx: past },
+      walletProvider: { balanceTx: past },
+      midnightProvider: { submitTx: past },
+    } as unknown as Ledger9ContractProviders;
+    return providers;
+  };
+  const authority = (committee: number, threshold: number) => async () => {
+    const state = new ledger.ContractState();
+    const keys = Array.from({ length: committee }, () => ledger.signatureVerifyingKey(ledger.sampleSigningKey()));
+    state.maintenanceAuthority = new ledger.ContractMaintenanceAuthority(keys, threshold, 0n);
+    return { protocolVersion: 0, contractState: SerializedContractState.fromBytes("v9", state.serialize()) };
+  };
+
+  const refusal = async (call: Promise<unknown>, reason: RegExp) => {
+    await assert.rejects(call, (error) => {
+      assert.ok(error instanceof ShieldedPoolError);
+      assert.equal(error.outcome, "failed");
+      assert.match(error.message, /^Refusing to shield into this contract, because /);
+      assert.match(error.message, reason);
+      return true;
+    });
+  };
+  const gotPast = (call: Promise<unknown>) =>
+    assert.rejects(call, (error) => {
+      assert.ok(error instanceof ShieldedPoolError);
+      assert.doesNotMatch(error.message, /^Refusing/);
+      return true;
+    });
+
+  it("refuses to shield into a contract its maintainers can change", async () => {
+    await refusal(shield(providersReading(authority(1, 1)), contract, token, 1n), /1 of its 1 maintainers can change it/);
+    await refusal(shield(providersReading(authority(0, 0)), contract, token, 1n), /anyone can change it/);
+  });
+
+  it("refuses to shield when the authority can't be read", async () => {
+    const lost = async () => {
+      throw new Error("the indexer went away");
+    };
+    await refusal(shield(providersReading(lost), contract, token, 1n), /couldn't be read: the indexer went away/);
+  });
+
+  it("lets a shield into an immutable contract through", async () => {
+    await gotPast(shield(providersReading(authority(0, 1)), contract, token, 1n));
+  });
+
+  it("lets a shield through when told the contract may be changeable", async () => {
+    const providers = providersReading(authority(1, 1));
+    await gotPast(shield(providers, contract, token, 1n, { allowChangeable: true }));
+  });
+
+  // Leaving a contract someone could change is exactly what a holder should always be able to do.
+  it("never stands in the way of an unshield", async () => {
+    await gotPast(unshield(providersReading(authority(1, 1)), contract, token, 1n, recipient));
   });
 });
 

@@ -5,11 +5,14 @@ export { connectorProviders } from "./connector.ts";
 export {
   type Authority,
   contractKeys,
+  type Immutability,
+  immutability,
   isImmutable,
   locked,
   maintenanceAuthority,
   NIGHT,
   shield,
+  type ShieldOptions,
   unshield,
   wrappedColor,
 } from "./pool.ts";

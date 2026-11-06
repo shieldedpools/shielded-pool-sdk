@@ -19,6 +19,8 @@ const txId = await shield(providers, contractAddress, NIGHT, 1_000_000n);
 
 `connected` is the wallet's connector API, version 4.1. The SDK re-exports its types, such as `ConnectedAPI` and `InitialAPI`, so you can use the version it's built against without installing the connector package yourself. Amounts are `bigint`s in a token's smallest units. `unshield` takes a recipient from `parseUnshieldedAddress`, `locked` reads what a contract holds, `isImmutable` checks what `maintenanceAuthority` returns, and `wrappedColor` names a wrapped token for the wallet's balances and transfers.
 
+`shield` refuses a contract that isn't known to be immutable, because whoever can change it can take everything it holds. `immutability` gives the answer it goes by: `immutable`, `changeable`, or `unreadable` when the authority can't be read, which `shield` treats as changeable. Pass `allowChangeable: true` only for a contract you control or are testing. `unshield` is never held back, so holders can always leave.
+
 `shield` and `unshield` check their arguments before anything reaches the network: a token is 64 hex characters, an amount runs from 1 to 2⁶⁴ − 1 units, and a recipient is 32 bytes and not the zero address. `parseUnshieldedAddress` refuses the zero address too.
 
 Both take a last, optional `{ onStep, signal }`. `onStep` hears `proving`, `balancing`, `submitting` and `submitted`, with the transaction's id at `submitted`. Aborting `signal` stops the call before the wallet is asked to balance or send it. Once the transaction has been handed over it can't be called back, so aborting changes nothing. Neither call has a timeout of its own: a wallet can hold a request, and the network can take its time, so set your own and abort.
