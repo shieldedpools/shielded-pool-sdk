@@ -10,9 +10,9 @@ import { before, describe, it } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { CompiledContract, type Contract as CompactContract } from "@midnight-ntwrk/compact-js";
-import { type ContractProviders, deployContract, submitTx } from "@midnight-ntwrk/midnight-js-contracts";
+import { deployContract, type Ledger9ContractProviders, submitTx } from "@midnight-ntwrk/midnight-js-contracts";
 import { NodeZkConfigProvider } from "@midnight-ntwrk/midnight-js-node-zk-config-provider";
-import { SucceedEntirely } from "@midnight-ntwrk/midnight-js-types";
+import { LedgerTransaction, SucceedEntirely } from "@midnight-ntwrk/midnight-js-types";
 import * as ledger from "@midnightntwrk/ledger-v9";
 import { WalletTransaction } from "@midnightntwrk/wallet-sdk-abstractions";
 import { MidnightBech32m } from "@midnightntwrk/wallet-sdk-address-format";
@@ -52,13 +52,13 @@ const MINTER_DIR = path.resolve(import.meta.dirname, "managed/minter");
 interface Actor {
   wallet: Wallet;
   /** What a user acts through. */
-  providers: ContractProviders;
+  providers: Ledger9ContractProviders;
   /** A connected wallet never deploys, so this is always the Node path. */
-  deployer: ContractProviders;
+  deployer: Ledger9ContractProviders;
   shielded: string;
 }
 
-function userProviders(wallet: Wallet, dir: string): Promise<ContractProviders> {
+function userProviders(wallet: Wallet, dir: string): Promise<Ledger9ContractProviders> {
   if (!VIA_CONNECTOR) return createProviders(wallet, network, ZK_DIR, dir);
   const zkConfig = new NodeZkConfigProvider<string>(ZK_DIR);
   return connectorProviders(fakeConnector(wallet, network), zkConfig);
@@ -261,7 +261,7 @@ describe("Shielded pool on a local chain", { concurrency: false }, () => {
     const inputForCoin = async () => {
       for (let i = 0; i < 60; i++) {
         const states = await providers.publicDataProvider.queryZSwapAndContractState(contract);
-        const { zswapChainState } = states as unknown as { zswapChainState: ledger.ZswapChainState };
+        const zswapChainState = states!.zswapChainState.deserialize({ v9: ledger.ZswapChainState });
         try {
           const qualified = { ...coin, mt_index: index };
           return ledger.ZswapInput.newContractOwned(qualified, 0, contract, zswapChainState);
@@ -316,7 +316,7 @@ describe("Shielded pool on a local chain", { concurrency: false }, () => {
         : unsigned;
       const intent = ledger.Intent.new(new Date(Date.now() + 120_000)).addMaintenanceUpdate(update);
       const tx = ledger.Transaction.fromParts(network.id, undefined, undefined, intent);
-      return submitTx(alice.deployer, { unprovenTx: { version: "v9", tx } });
+      return submitTx(alice.deployer, { unprovenTx: LedgerTransaction.seal("v9", "Unproven", tx) });
     };
     await rejected(removeUnshield(contract), /submit/i);
     await rejected(removeUnshield(contract, ledger.sampleSigningKey()), /submit/i);

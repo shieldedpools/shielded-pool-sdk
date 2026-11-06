@@ -1,10 +1,11 @@
 import { CompiledContract, type Contract as CompactContract } from "@midnight-ntwrk/compact-js";
 import {
-  type ContractProviders,
   findDeployedContract,
   getUnshieldedBalances,
+  type Ledger9ContractProviders,
 } from "@midnight-ntwrk/midnight-js-contracts";
 import {
+  ContractState,
   createShieldedCoinInfo,
   encodeShieldedCoinInfo,
   nativeToken,
@@ -64,7 +65,7 @@ export function wrappedColor(contractAddress: string, token: string): string {
 }
 
 export async function attach(
-  providers: ContractProviders,
+  providers: Ledger9ContractProviders,
   contractAddress: string,
 ): Promise<WrapperCircuits> {
   const found = await findDeployedContract(providers, {
@@ -78,7 +79,7 @@ export async function attach(
 
 /** Locks `amount` units of `token` and mints the same amount of its wrapped token to this wallet. */
 export async function shield(
-  providers: ContractProviders,
+  providers: Ledger9ContractProviders,
   contractAddress: string,
   token: string,
   amount: bigint,
@@ -97,7 +98,7 @@ export async function shield(
  * keeps the change, so the amount does not have to match an earlier `shield`.
  */
 export async function unshield(
-  providers: ContractProviders,
+  providers: Ledger9ContractProviders,
   contractAddress: string,
   token: string,
   amount: bigint,
@@ -118,12 +119,13 @@ export interface Authority {
 
 /** Who can replace this contract's circuits, and with them take everything it holds. */
 export async function maintenanceAuthority(
-  providers: ContractProviders,
+  providers: Ledger9ContractProviders,
   contractAddress: string,
 ): Promise<Authority> {
-  const contract = await providers.publicDataProvider.queryContractState(contractAddress);
-  if (contract?.version !== "v9") throw new Error(`No ledger 9 contract at ${contractAddress}`);
-  const { committee, threshold, counter } = contract.state.maintenanceAuthority;
+  const read = await providers.publicDataProvider.queryContractState(contractAddress);
+  if (read?.contractState.era !== "v9") throw new Error(`No ledger 9 contract at ${contractAddress}`);
+  const state = read.contractState.deserialize({ v9: ContractState });
+  const { committee, threshold, counter } = state.maintenanceAuthority;
   return { committee: committee.map((key) => key.value), threshold, counter };
 }
 
@@ -139,7 +141,7 @@ export function isImmutable({ committee, threshold }: Authority): boolean {
 
 /** The `token` backing its wrapped token, read from the contract's public balance. */
 export async function locked(
-  providers: ContractProviders,
+  providers: Ledger9ContractProviders,
   contractAddress: string,
   token: string,
 ): Promise<bigint> {

@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-import type { ContractProviders } from "@midnight-ntwrk/midnight-js-contracts";
+import type { Ledger9ContractProviders } from "@midnight-ntwrk/midnight-js-contracts";
 import { httpClientProofProvider } from "@midnight-ntwrk/midnight-js-http-client-proof-provider";
 import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
 import { levelPrivateStateProvider } from "@midnight-ntwrk/midnight-js-level-private-state-provider";
@@ -10,7 +10,11 @@ import {
   NodeZkConfigProvider,
   nodeZkConfigRegistry,
 } from "@midnight-ntwrk/midnight-js-node-zk-config-provider";
-import { createMidnightProvider, createWalletProvider } from "@midnight-ntwrk/midnight-js-types";
+import {
+  createLedger9MidnightProvider,
+  createLedger9WalletProvider,
+} from "@midnight-ntwrk/midnight-js-types";
+import * as ledger from "@midnightntwrk/ledger-v9";
 import { WalletTransaction } from "@midnightntwrk/wallet-sdk-abstractions";
 import { DefaultForkSchedule } from "@midnightntwrk/wallet-sdk-facade";
 
@@ -26,16 +30,18 @@ export async function createProviders(
   network: Network,
   zkDir: string,
   stateDir: string,
-): Promise<ContractProviders> {
+): Promise<Ledger9ContractProviders> {
   const state = await syncedState(wallet);
 
-  const walletProvider = createWalletProvider({
+  // midnight-js passes transactions as bytes, and the wallet decodes them with the same ledger.
+  const walletProvider = createLedger9WalletProvider({
     getCoinPublicKey: () => state.shielded.coinPublicKey.toHexString(),
     getEncryptionPublicKey: () => state.shielded.encryptionPublicKey.toHexString(),
     balanceTx: async (tx, ttl) => {
       const expires = ttl ?? new Date(Date.now() + TX_TTL_SECONDS * 1000);
       await settledState(wallet);
-      const handle = WalletTransaction.adopt("Unbound", tx, DefaultForkSchedule.v9);
+      const unbound = tx.deserialize({ v9: ledger.Transaction });
+      const handle = WalletTransaction.adopt("Unbound", unbound, DefaultForkSchedule.v9);
       await waitForFeeBudget(wallet, handle, expires);
       const recipe = await wallet.facade.balanceUnboundTransaction(handle, { ttl: expires });
       // `shield` spends the caller's NIGHT, so the balanced transaction needs their signature.
@@ -45,9 +51,13 @@ export async function createProviders(
       return unwrapFinalized(await wallet.facade.finalizeRecipe(signed));
     },
   });
-  const midnightProvider = createMidnightProvider((finalized) =>
+  const midnightProvider = createLedger9MidnightProvider((finalized) =>
     wallet.facade.submitTransaction(
-      WalletTransaction.adopt("Finalized", finalized, DefaultForkSchedule.v9),
+      WalletTransaction.adopt(
+        "Finalized",
+        finalized.deserialize({ v9: ledger.Transaction }),
+        DefaultForkSchedule.v9,
+      ),
     ),
   );
 
@@ -64,7 +74,10 @@ export async function createProviders(
       privateStoragePasswordProvider: () => "Shielded-pool-local-only1",
       accountId: state.shielded.encryptionPublicKey.toHexString().slice(0, 16),
     }),
-    publicDataProvider: indexerPublicDataProvider(network.indexerHttp, network.indexerWs),
+    publicDataProvider: indexerPublicDataProvider({
+      queryURL: network.indexerHttp,
+      subscriptionURL: network.indexerWs,
+    }),
     zkConfigProvider,
     proofProvider: httpClientProofProvider({
       url: network.proofServer,
