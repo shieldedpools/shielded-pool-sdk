@@ -14,12 +14,7 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
-    "noEmit": true,
-    // Its index.d.ts re-exports from "./api" with no extension, which NodeNext can't resolve, and
-    // skipLibCheck hides that: every connector type would silently be `any`.
-    "paths": {
-      "@midnightntwrk/dapp-connector-api": ["./node_modules/@midnightntwrk/dapp-connector-api/dist/api.d.ts"]
-    }
+    "noEmit": true
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }

@@ -4,6 +4,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, it } from "node:test";
 
+import type * as Sdk from "../../src/index.ts";
+
 const root = path.resolve(import.meta.dirname, "../..");
 const src = path.join(root, "src");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -35,6 +37,26 @@ describe("public API", () => {
       "unshield",
       "wrappedColor",
     ]);
+  });
+
+  // skipLibCheck hides a package whose types fail to resolve, and TypeScript then accepts anything
+  // for them without a word. Each line below is wrong for a real type, so a directive that goes
+  // unused means that type didn't resolve. `npm run typecheck` is what fails.
+  it("re-exports the connector types as real types", () => {
+    const wrong = 0;
+    // @ts-expect-error a number isn't a connected wallet
+    const connected: Sdk.ConnectedAPI = wrong;
+    // @ts-expect-error a number isn't a wallet
+    const initial: Sdk.InitialAPI = wrong;
+    // @ts-expect-error a number isn't a connected wallet
+    const walletConnected: Sdk.WalletConnectedAPI = wrong;
+    // @ts-expect-error a number isn't a configuration
+    const configuration: Sdk.Configuration = wrong;
+    // @ts-expect-error a number isn't a wallet error
+    const error: Sdk.APIError = wrong;
+    // @ts-expect-error a number isn't an error code
+    const code: Sdk.ErrorCode = wrong;
+    assert.deepEqual([connected, initial, walletConnected, configuration, error, code], Array(6).fill(0));
   });
 
   it("keeps everything that needs Node out of what it publishes", () => {

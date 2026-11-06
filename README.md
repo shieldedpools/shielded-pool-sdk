@@ -17,7 +17,7 @@ const providers = await connectorProviders(connected, keys);
 const txId = await shield(providers, contractAddress, NIGHT, 1_000_000n);
 ```
 
-`connected` is the wallet's connector API, version 4.1. Amounts are `bigint`s in a token's smallest units. `unshield` takes a recipient from `parseUnshieldedAddress`, `locked` reads what a contract holds, `isImmutable` checks what `maintenanceAuthority` returns, and `wrappedColor` names a wrapped token for the wallet's balances and transfers.
+`connected` is the wallet's connector API, version 4.1. The SDK re-exports its types, such as `ConnectedAPI` and `InitialAPI`, so you can use the version it's built against without installing the connector package yourself. Amounts are `bigint`s in a token's smallest units. `unshield` takes a recipient from `parseUnshieldedAddress`, `locked` reads what a contract holds, `isImmutable` checks what `maintenanceAuthority` returns, and `wrappedColor` names a wrapped token for the wallet's balances and transfers.
 
 Your build needs:
 

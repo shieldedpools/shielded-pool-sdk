@@ -13,3 +13,13 @@ export {
   unshield,
   wrappedColor,
 } from "./pool.ts";
+// The connector API this SDK is built against, so an app that talks to the wallet uses the same
+// version that `connectorProviders` expects.
+export type {
+  APIError,
+  Configuration,
+  ConnectedAPI,
+  ErrorCode,
+  InitialAPI,
+  WalletConnectedAPI,
+} from "@midnightntwrk/dapp-connector-api";
