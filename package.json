@@ -49,7 +49,7 @@
     "@midnightntwrk/dapp-connector-api": "4.1.0",
     "@midnightntwrk/ledger-v9": "1.0.0",
     "@scure/base": "2.4.0",
-    "@shieldedpools/contracts": "0.2.0"
+    "@shieldedpools/contracts": "0.3.0"
   },
   "devDependencies": {
     "@midnight-ntwrk/compact-runtime": "0.21.0",

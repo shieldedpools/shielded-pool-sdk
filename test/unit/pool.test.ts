@@ -16,10 +16,33 @@ import { SerializedContractState } from "@midnight-ntwrk/midnight-js-types";
 import * as ledger from "@midnightntwrk/ledger-v9";
 
 import { ZK_DIR } from "../support/config.ts";
-import { immutability, isImmutable, shield, unshield, wrappedColor } from "../../src/pool.ts";
+import {
+  immutability,
+  isImmutable,
+  shield,
+  shieldToPerson,
+  unshield,
+  unshieldToPerson,
+  wrappedColor,
+} from "../../src/pool.ts";
 import { ShieldedPoolError } from "../../src/transaction.ts";
 
 const hex = () => randomBytes(32).toString("hex");
+
+// These run the circuits without a proof or a network, so they check what the SDK hands the
+// contract, not the proofs or the ledger.
+const circuits = new Contract({});
+const wallet = { bytes: randomBytes(32) };
+const { currentContractState } = await circuits.initialState(createConstructorContext({}, wallet));
+const poolAddress = sampleContractAddress();
+const circuitContext = (circuitId: string) =>
+  createCircuitContext({
+    circuitId,
+    contractAddress: poolAddress,
+    coinPublicKeyOrZswapState: wallet,
+    contractState: currentContractState,
+    privateState: {},
+  });
 
 describe("tokens", () => {
   it("gives each token on each contract its own wrapped colour", () => {
@@ -29,23 +52,55 @@ describe("tokens", () => {
     assert.notEqual(wrappedColor(contract, token), wrappedColor(other, token));
   });
 
-  // Runs the circuit without a proof or a network, so this checks the colour the contract
-  // mints, which is what unshield compares a coin's colour against.
+  // The colour the contract mints is what unshield compares a coin's colour against.
   it("names the colour the contract's shield circuit mints", async () => {
-    const contract = new Contract({});
-    const wallet = { bytes: randomBytes(32) };
-    const { currentContractState } = await contract.initialState(createConstructorContext({}, wallet));
-    const address = sampleContractAddress();
     const token = hex();
-    const context = createCircuitContext({
-      circuitId: "shield",
-      contractAddress: address,
-      coinPublicKeyOrZswapState: wallet,
-      contractState: currentContractState,
-      privateState: {},
-    });
-    const { result } = await contract.circuits.shield(context, Buffer.from(token, "hex"), 5n, randomBytes(32));
-    assert.equal(Buffer.from(result.color).toString("hex"), wrappedColor(address, token));
+    const { result } = await circuits.circuits.shield(
+      circuitContext("shield"),
+      Buffer.from(token, "hex"),
+      5n,
+      randomBytes(32),
+      shieldToPerson(wallet.bytes),
+    );
+    assert.equal(Buffer.from(result.color).toString("hex"), wrappedColor(poolAddress, token));
+  });
+});
+
+// The two circuits put a person on opposite sides of their Eithers, so a swap would pay a
+// contract, or be refused, instead of paying the person.
+describe("recipients", () => {
+  const token = randomBytes(32);
+
+  it("mints to the person whose coin key it's given", async () => {
+    const someone = randomBytes(32);
+    const { context } = await circuits.circuits.shield(
+      circuitContext("shield"),
+      token,
+      5n,
+      randomBytes(32),
+      shieldToPerson(someone),
+    );
+    const [output] = context.callContext.currentZswapLocalState?.outputs ?? [];
+    assert.equal(output?.recipient.is_left, true);
+    assert.deepEqual(Buffer.from(output!.recipient.left.bytes), someone);
+  });
+
+  it("releases the token to the user address it's given", async () => {
+    const someone = randomBytes(32);
+    const coin = {
+      nonce: randomBytes(32),
+      color: Buffer.from(wrappedColor(poolAddress, token.toString("hex")), "hex"),
+      value: 5n,
+    };
+    const { context } = await circuits.circuits.unshield(circuitContext("unshield"), token, coin, unshieldToPerson(someone));
+    const [[[, to]] = [[]]] = [...context.callContext.currentQueryContext.effects.claimedUnshieldedSpends];
+    assert.deepEqual(to, { tag: "user", address: someone.toString("hex") });
+  });
+
+  it("leaves the side not taken as zeros, which is all the runtime accepts", () => {
+    const zeros = new Uint8Array(32);
+    assert.deepEqual(shieldToPerson(randomBytes(32)).right.bytes, zeros);
+    assert.deepEqual(unshieldToPerson(randomBytes(32)).left.bytes, zeros);
   });
 });
 

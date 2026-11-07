@@ -36,7 +36,7 @@ export const PRIVATE_STATE_ID = "shielded-pool";
 // SHA-256 of the contract's compiler/contract-manifest.json, which lists every key and ZKIR file
 // by hash. Pinning it here means whoever serves those files can't swap them, even with a matching
 // manifest. A unit test fails if this drifts from the contracts package this SDK is locked to.
-const CONTRACT_MANIFEST_SHA256 = "abf9a282ba1258781fbe4beaecc9495a205b453b49f31ec90d055299863f883e";
+const CONTRACT_MANIFEST_SHA256 = "371ded4d7ee8ea8ac1e73fe4e92dd03c96e201f3b0177c4e3dce4a372babc659";
 
 /**
  * Keys and ZKIR for `connectorProviders`, fetched from `baseUrl`, an absolute URL. It has to serve
@@ -88,6 +88,14 @@ function checkRecipient(recipient: Uint8Array): void {
   // The contract refuses it too, but only once it's been asked.
   if (recipient.every((byte) => byte === 0)) refuse("The zero address can't receive tokens");
 }
+
+// The two Eithers put people on opposite sides, and the side not taken has to be all zeros: the
+// runtime refuses anything else.
+const ZEROS = { bytes: new Uint8Array(32) };
+export const shieldToPerson = (coinPublicKey: Uint8Array) =>
+  ({ is_left: true, left: { bytes: coinPublicKey }, right: ZEROS }) as const;
+export const unshieldToPerson = (userAddress: Uint8Array) =>
+  ({ is_left: false, left: ZEROS, right: { bytes: userAddress } }) as const;
 
 /** The colour of `token`'s wrapped token. It must match `tokenType()` in the contract. */
 export function wrappedColor(contractAddress: string, token: string): string {
@@ -141,9 +149,10 @@ export async function shield(
         throw new ShieldedPoolError(`Refusing to shield into this contract, because ${whyNot(status)}`, "failed");
       }
     }
+    const coinPublicKey = observed.walletProvider.getCoinPublicKey();
     const contract = await attach(observed, contractAddress);
     const nonce = crypto.getRandomValues(new Uint8Array(32));
-    const result = await contract.shield(hex.decode(token), amount, nonce);
+    const result = await contract.shield(hex.decode(token), amount, nonce, shieldToPerson(hex.decode(coinPublicKey)));
     return result.public.txId;
   });
 }
@@ -173,7 +182,7 @@ export async function unshield(
     const contract = await attach(observed, contractAddress);
     const color = wrappedColor(contractAddress, token);
     const coin = encodeShieldedCoinInfo(createShieldedCoinInfo(color, amount));
-    const result = await contract.unshield(hex.decode(token), coin, { bytes: recipient });
+    const result = await contract.unshield(hex.decode(token), coin, unshieldToPerson(recipient));
     return result.public.txId;
   });
 }

@@ -41,6 +41,7 @@ import {
   PRIVATE_STATE_ID,
   shield,
   unshield,
+  unshieldToPerson,
   wrappedColor,
 } from "../../src/pool.ts";
 import { fakeConnector } from "./fake-connector.ts";
@@ -229,12 +230,12 @@ describe("Shielded pool on a local chain", { concurrency: false }, () => {
     const circuits = await attach(alice.providers, contract);
     const coin = (token: string) =>
       ledger.encodeShieldedCoinInfo(ledger.createShieldedCoinInfo(color(token), 1_000n));
-    const me = { bytes: userAddressBytes(alice.wallet) };
+    const me = unshieldToPerson(userAddressBytes(alice.wallet));
     const token = (hex: string) => Buffer.from(hex, "hex");
     await rejected(circuits.unshield(token(NIGHT), coin(usd), me), /wrong token/);
     await rejected(circuits.unshield(token(usd), coin(NIGHT), me), /wrong token/);
     await rejected(
-      circuits.unshield(token(NIGHT), coin(NIGHT), { bytes: Buffer.alloc(32) }),
+      circuits.unshield(token(NIGHT), coin(NIGHT), unshieldToPerson(Buffer.alloc(32))),
       /zero recipient/,
     );
     await assertBacked();
@@ -246,7 +247,7 @@ describe("Shielded pool on a local chain", { concurrency: false }, () => {
     const coin = ledger.createShieldedCoinInfo(color(NIGHT), amount);
     const encoded = ledger.encodeShieldedCoinInfo(coin);
     const token = Buffer.from(NIGHT, "hex");
-    const me = { bytes: userAddressBytes(alice.wallet) };
+    const me = unshieldToPerson(userAddressBytes(alice.wallet));
 
     const { public: { txId } } = await circuits.unshield(token, encoded, me);
     backing.set(NIGHT, backing.get(NIGHT)! - amount);
