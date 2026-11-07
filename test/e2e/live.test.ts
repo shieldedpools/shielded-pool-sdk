@@ -347,8 +347,21 @@ describe("Shielded pool on a local chain", { concurrency: false }, () => {
   });
 
   it("moves wrapped tokens privately between wallets", async () => {
+    const before = await shieldedBalance(bob.wallet, color(NIGHT));
     await transfer(alice.wallet, color(NIGHT), 2_000_000n, bob.shielded);
-    await eventually(() => shieldedBalance(bob.wallet, color(NIGHT)), 2_000_000n, "Bob paid");
+    await eventually(() => shieldedBalance(bob.wallet, color(NIGHT)), before + 2_000_000n, "Bob paid");
+    await assertBacked();
+  });
+
+  // Alice pays the backing and Bob's wallet finds the coin, which takes the encryption key his
+  // shielded address carries.
+  it("shields to another wallet, given its shielded address", async () => {
+    const aliceBefore = await shieldedBalance(alice.wallet, color(usd));
+    const bobBefore = await shieldedBalance(bob.wallet, color(usd));
+    await shield(alice.providers, contract, usd, 3_000n, { recipient: bob.shielded });
+    backing.set(usd, backing.get(usd)! + 3_000n);
+    await eventually(() => shieldedBalance(bob.wallet, color(usd)), bobBefore + 3_000n, "Bob minted to");
+    assert.equal(await shieldedBalance(alice.wallet, color(usd)), aliceBefore);
     await assertBacked();
   });
 });

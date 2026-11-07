@@ -61,6 +61,18 @@ describe("public API", () => {
     assert.deepEqual([connected, initial, walletConnected, configuration, error, code], Array(6).fill(0));
   });
 
+  // A person is taken as a shielded address, which carries both their keys, never as a coin key
+  // alone. `npm run typecheck` is what fails.
+  it("takes the person to shield to as a shielded address", () => {
+    const options: Sdk.ShieldOptions = { recipient: "mn_shield-addr_undeployed1..." };
+    // @ts-expect-error a coin key's bytes aren't an address
+    const bytes: Sdk.ShieldOptions = { recipient: new Uint8Array(32) };
+    // @ts-expect-error a coin key on its own isn't an address
+    const key: Sdk.ShieldOptions = { recipient: { coinPublicKey: "00".repeat(32) } };
+    assert.equal(typeof options.recipient, "string");
+    assert.ok(bytes && key);
+  });
+
   it("keeps everything that needs Node out of what it publishes", () => {
     const nodeOnly = /^(node:|ws$|rxjs$|@midnightntwrk\/wallet-sdk-|@midnight-ntwrk\/midnight-js-(level|node-zk|http-client))/;
     const seen = new Set<string>();

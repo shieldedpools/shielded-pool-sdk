@@ -1,8 +1,10 @@
 import { CompiledContract, type Contract as CompactContract } from "@midnight-ntwrk/compact-js";
 import {
+  createCallTxOptions,
   findDeployedContract,
   getUnshieldedBalances,
   type Ledger9ContractProviders,
+  submitCallTx,
 } from "@midnight-ntwrk/midnight-js-contracts";
 import {
   ContractState,
@@ -16,6 +18,7 @@ import type { ZKConfigProvider } from "@midnight-ntwrk/midnight-js-types";
 import { type Circuits, Contract } from "@shieldedpools/contracts";
 import { hex } from "@scure/base";
 
+import { parseShieldedAddress, type ShieldedKeys } from "./address.ts";
 import { type CallOptions, ShieldedPoolError, track } from "./transaction.ts";
 
 /** NIGHT's colour. Tokens are identified by colour, as 64 hex characters. */
@@ -81,12 +84,32 @@ function checkAmount(amount: bigint): void {
   }
 }
 
+const isZero = (bytes: Uint8Array) => bytes.every((byte) => byte === 0);
+
 function checkRecipient(recipient: Uint8Array): void {
   if (!(recipient instanceof Uint8Array) || recipient.length !== 32) {
     refuse("The recipient has to be 32 bytes, as parseUnshieldedAddress returns");
   }
   // The contract refuses it too, but only once it's been asked.
-  if (recipient.every((byte) => byte === 0)) refuse("The zero address can't receive tokens");
+  if (isZero(recipient)) refuse("The zero address can't receive tokens");
+}
+
+// A person's coin key alone isn't enough: the coin is encrypted to their encryption key, and the
+// contract can't check that the two belong together. A mismatch mints a coin nobody ever finds, so
+// a person is only ever taken as a shielded address, which carries both.
+function checkShieldedRecipient(address: string, networkId: string): ShieldedKeys {
+  if (typeof address !== "string") refuse("The recipient has to be a shielded address, mn_shield-addr_...");
+  let keys: ShieldedKeys;
+  try {
+    keys = parseShieldedAddress(address, networkId);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return refuse(`The recipient has to be a shielded address on ${networkId}: ${reason}`);
+  }
+  if (isZero(hex.decode(keys.coinPublicKey)) || isZero(hex.decode(keys.encryptionPublicKey))) {
+    refuse("The zero address can't receive tokens");
+  }
+  return keys;
 }
 
 // The two Eithers put people on opposite sides, and the side not taken has to be all zeros: the
@@ -102,17 +125,29 @@ export function wrappedColor(contractAddress: string, token: string): string {
   return rawTokenType(hex.decode(token), contractAddress);
 }
 
+/**
+ * The contract's circuits, once its verifier keys are checked against these. `encryptionKeys` maps
+ * the coin key of each person, other than this wallet, that a call mints to onto their encryption
+ * key, which midnight-js needs to encrypt the coin to them.
+ */
 export async function attach(
   providers: Ledger9ContractProviders,
   contractAddress: string,
+  encryptionKeys?: ReadonlyMap<string, string>,
 ): Promise<WrapperCircuits> {
-  const found = await findDeployedContract(providers, {
+  await findDeployedContract(providers, {
     compiledContract: compiled,
     contractAddress,
     privateStateId: PRIVATE_STATE_ID,
     initialPrivateState: {},
   });
-  return found.callTx as unknown as WrapperCircuits;
+  // What the found contract's callTx does, except that it has nowhere to put the encryption keys.
+  const call = (circuitId: "shield" | "unshield") => (...args: unknown[]) =>
+    submitCallTx(
+      providers,
+      createCallTxOptions(compiled, circuitId, contractAddress, PRIVATE_STATE_ID, encryptionKeys, args as never),
+    ) as Promise<CallResult>;
+  return { shield: call("shield"), unshield: call("unshield") };
 }
 
 export interface ShieldOptions extends CallOptions {
@@ -121,17 +156,24 @@ export interface ShieldOptions extends CallOptions {
    * everything it holds, so only set this for a contract you control or are testing.
    */
   allowChangeable?: boolean;
+  /**
+   * Mint to this person instead of the connected wallet, given as their shielded address
+   * (`mn_shield-addr_...`) on the connected network. Only a shielded address will do: it carries
+   * the encryption key the coin is sent under as well as the key that owns it.
+   */
+  recipient?: string;
 }
 
 /**
- * Locks `amount` units of `token` and mints the same amount of its wrapped token to this wallet.
- * Resolves to the transaction's id once the network has confirmed it.
+ * Locks `amount` units of `token` and mints the same amount of its wrapped token to this wallet,
+ * or to `options.recipient`. Resolves to the transaction's id once the network has confirmed it.
  *
  * Refuses a contract that isn't known to be immutable, unless `allowChangeable` is set: anyone who
  * can change it can take what it holds, and a maintenance authority that can't be read is no answer.
  *
  * Throws {@link ShieldedPoolError}. Its `outcome` says whether the transaction might have been sent:
- * arguments the contract can't take, for one, are refused as `failed` before anything is sent.
+ * arguments the contract can't take, for one, are refused as `failed` before anything is sent. That
+ * includes a `recipient` that isn't a shielded address on the connected network.
  */
 export async function shield(
   providers: Ledger9ContractProviders,
@@ -142,6 +184,8 @@ export async function shield(
 ): Promise<string> {
   checkToken(token);
   checkAmount(amount);
+  const to =
+    options.recipient === undefined ? undefined : checkShieldedRecipient(options.recipient, providers.config.networkId);
   return track(providers, options, async (observed) => {
     if (options.allowChangeable !== true) {
       const status = await immutability(observed, contractAddress);
@@ -149,8 +193,10 @@ export async function shield(
         throw new ShieldedPoolError(`Refusing to shield into this contract, because ${whyNot(status)}`, "failed");
       }
     }
-    const coinPublicKey = observed.walletProvider.getCoinPublicKey();
-    const contract = await attach(observed, contractAddress);
+    // Minting to this wallet needs no mapping: midnight-js already has its encryption key.
+    const coinPublicKey = to?.coinPublicKey ?? observed.walletProvider.getCoinPublicKey();
+    const encryptionKeys = to && new Map([[to.coinPublicKey, to.encryptionPublicKey]]);
+    const contract = await attach(observed, contractAddress, encryptionKeys);
     const nonce = crypto.getRandomValues(new Uint8Array(32));
     const result = await contract.shield(hex.decode(token), amount, nonce, shieldToPerson(hex.decode(coinPublicKey)));
     return result.public.txId;

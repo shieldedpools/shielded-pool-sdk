@@ -10,6 +10,13 @@ import {
   sampleContractAddress,
 } from "@midnight-ntwrk/compact-runtime";
 import { Contract } from "@shieldedpools/contracts";
+import {
+  MidnightBech32m,
+  ShieldedAddress,
+  ShieldedCoinPublicKey,
+  ShieldedEncryptionPublicKey,
+  UnshieldedAddress,
+} from "@midnightntwrk/wallet-sdk-address-format";
 
 import type { Ledger9ContractProviders } from "@midnight-ntwrk/midnight-js-contracts";
 import { SerializedContractState } from "@midnight-ntwrk/midnight-js-types";
@@ -107,12 +114,22 @@ describe("recipients", () => {
 describe("arguments", () => {
   // Any use of these means a call got past its checks, which is what reaching the network takes.
   const TOUCHED = "touched the providers";
+  // The network id is configuration, so reading it doesn't count.
   const providers = new Proxy({}, {
-    get() {
+    get(_, name) {
+      if (name === "config") return { networkId: "undeployed" };
       throw new Error(TOUCHED);
     },
   }) as Ledger9ContractProviders;
   const [contract, token, recipient] = [hex(), hex(), randomBytes(32)];
+  const shieldedAddress = (coin: Uint8Array, encryption: Uint8Array, networkId = "undeployed") =>
+    MidnightBech32m.encode(
+      networkId,
+      new ShieldedAddress(
+        new ShieldedCoinPublicKey(Buffer.from(coin)),
+        new ShieldedEncryptionPublicKey(Buffer.from(encryption)),
+      ),
+    ).asString();
 
   const refused = async (call: Promise<unknown>, reason: RegExp) => {
     await assert.rejects(call, (error) => {
@@ -150,6 +167,38 @@ describe("arguments", () => {
       await refused(unshield(providers, contract, token, 1n, bad), /32 bytes/);
     }
     await refused(unshield(providers, contract, token, 1n, new Uint8Array(32)), /zero address/);
+  });
+
+  it("takes a shielded address on the connected network as the person to shield to", async () => {
+    const recipient = shieldedAddress(randomBytes(32), randomBytes(32));
+    await passed(shield(providers, contract, token, 1n, { recipient }));
+  });
+
+  it("refuses to shield to anything but a shielded address on the connected network", async () => {
+    const coinKey = randomBytes(32);
+    const valid = shieldedAddress(coinKey, randomBytes(32));
+    const corrupted = valid.slice(0, -1) + (valid.at(-1) === "q" ? "p" : "q");
+    const bad = [
+      // A bare coin key: the coin would be encrypted to a key nobody checked.
+      coinKey.toString("hex"),
+      MidnightBech32m.encode("undeployed", new UnshieldedAddress(coinKey)).asString(),
+      shieldedAddress(coinKey, randomBytes(32), "preview"),
+      corrupted,
+      "",
+      coinKey as unknown as string,
+    ];
+    for (const recipient of bad) {
+      await refused(shield(providers, contract, token, 1n, { recipient }), /shielded address/);
+    }
+  });
+
+  it("refuses to shield to the zero address", async () => {
+    for (const recipient of [
+      shieldedAddress(new Uint8Array(32), randomBytes(32)),
+      shieldedAddress(randomBytes(32), new Uint8Array(32)),
+    ]) {
+      await refused(shield(providers, contract, token, 1n, { recipient }), /zero address/);
+    }
   });
 });
 
